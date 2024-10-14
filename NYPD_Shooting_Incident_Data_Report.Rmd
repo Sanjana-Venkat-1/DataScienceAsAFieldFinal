@@ -1,0 +1,158 @@
+---
+title: "NYPD_Shooting_Incident_Data_Report"
+author: "Sanjana Venkat"
+date: "10/13/2024"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+
+This report will focus on analyzing data from the 'NYPD Shooting Incident Data (Historic)' dataset, which is available through the NYC OpenData program. To begin the analysis, the following R packages need to be installed:
+
+1.) tidyverse
+2.) sessioninfo
+
+Once those packages are installed, the following code will load the essential libraries that will be used throughout the analysis.
+
+```{r packages}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+```
+## Importing Data (Reproducibility)
+To import the necessary dataset, visit the following source: <https://catalog.data.gov/dataset>. Follow these steps:
+
+1.) Use the search function to locate the dataset named 'NYPD Shooting Incident Data (Historic).'
+2.) Right-click on the CSV button adjacent to the title and copy the link address into your RMD document.
+
+The code provided below will facilitate this process by reading the data in CSV format.
+
+```{r Importing Data}
+nypd_data <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+ny_data <- read.csv(nypd_data)
+```
+## Tidying and Transforming the Data
+Once you have imported the NYPD Shooting Incident Data, the next step is to tidy and reshape the data for analysis. The primary objective of this analysis is to address the following question:
+
+"How many shooting incidents took place in each borough, and how many of these incidents led to murder?"
+
+The first data visualization will aim to provide insights into this question. The code below is designed to perform the initial tidying and transformation of the dataset.
+
+```{r Tidy and Transform the Data}
+incident_keys <- ny_data[1]
+occurrence_dates <- ny_data[2]
+occurrence_times <- ny_data[3]
+boroughs <- ny_data[4]
+precincts <- ny_data[5]
+juris_codes <- ny_data[6]
+loc_descript <- ny_data[7]
+is_murder <- ny_data[8]
+perp_age <- ny_data[9]
+perp_sex <- ny_data[10]
+perp_race <- ny_data[11]
+victim_age_group <- ny_data[12]
+victim_sex <- ny_data[13]
+victim_race <- ny_data[14]
+latitude <- ny_data[17]
+longitude <- ny_data[18]
+coordinates <- ny_data[19]
+
+df <- data.frame(occurrence_dates, occurrence_times, juris_codes, precincts, boroughs, loc_descript, is_murder, perp_age)
+
+murders <- filter(df, is_murder=='true')
+not_murders <- filter(df, is_murder=='false')
+
+murders_by_borough <- table(t(murders$BORO))
+not_murders_by_borough <- table(t(not_murders$BORO))
+combined <- rbind(murders_by_borough, not_murders_by_borough)
+```
+
+## Data Visualization 01 : Number of Shootings Per Borough 
+The following visualization features a bar graph that displays the number of shootings in each New York borough from 2006 to 2020. Additionally, it highlights the number of those incidents that resulted in murder, allowing for a clear comparison of shooting occurrences and fatal outcomes across the boroughs during this period.
+
+```{r Data Visualization 01}
+bp <- barplot(combined, main="Number of Shootings By Borough (From 2006 - 2020)",
+              beside = T, col=c("blue", "yellow"), width = 0.2,
+              ylim = c(0,10000), cex.axis = 0.75, cex.names = 0.75,
+              xlab = "Boroughs", ylab = "Number of Shootings")
+grid(nx = NA, ny = NULL, lwd = 1, lty = 1, col = "lightgray")
+text(bp, combined + 0.5, pos = 3, labels = combined)
+legend("topright", legend = c("Fatal Shootings", "Non-fatal Shootings"),
+       fill = c("blue","yellow"))
+```
+
+## Data Visualization 02 : Percentage of Shootings in Brooklyn By Age Group 
+The second visualization will necessitate additional data transformations. From the findings of the first visualization, it's clear that Brooklyn has the highest number of shootings from 2006 to 2020. This observation raises two pertinent questions: "Why does Brooklyn experience the highest number of shootings during this period?" and "Can analyzing the age groups involved shed more light on the situation in Brooklyn?" These questions guide the focus of the second visualization.
+
+Building on insights from the first visualization, the next one examines the distribution of shootings in Brooklyn across different age groups during the specified timeframe. During the data transformation process, it became apparent that many shooting incidents lacked recorded entries for the 'Age Group' attribute. To address this issue, I categorized these missing entries as 'UNKNOWN,' which helps clarify how this missing information may affect subsequent visualizations and analyses.
+
+The following code illustrates these transformations, leading to the second visualization, which details Brooklyn shootings by age group categories. A concerning finding is that over half (54.93%) of the Brooklyn shooting entries were categorized as 'UNKNOWN,' highlighting a significant gap in age group data. This lack of information could stem from various factors, such as the inability to quickly identify suspects during incidents, their clothing obscuring identifiable traits, or local law enforcement lacking the technology and resources to gather specific details.
+
+To better understand why Brooklyn has the highest number of shootings among the five New York boroughs, additional data will be needed. Potential contributing factors might include policy issues, insufficient police presence, or inadequate medical resources in the area to handle emergencies.
+
+```{r Data Visualization 02}
+new_df <- tibble(boroughs, perp_age)
+new_df$PERP_AGE_GROUP <- sub("^$", "UNKNOWN", new_df$PERP_AGE_GROUP)
+
+brooklyn_shootings <- filter(new_df, boroughs=='BROOKLYN')
+
+m <- table(brooklyn_shootings)
+
+shootings_per_age <- c(m[1], m[2], m[3], m[4], m[5], m[7])
+age_perc <- round(shootings_per_age/sum(shootings_per_age)*100, 2)
+age_groups <- c("<18 (5.39%)","18-24 (20.54%)","25-44 (17.24%)","45-64 (1.66%)",
+                "65+ (0.24%)", "UNKNOWN (54.93%)")
+lbls <- paste(age_perc, "%", sep="")
+
+brooklyn_data <- data.frame(shootings_per_age, age_perc, age_groups)
+
+ggplot(brooklyn_data, aes(x="", y=age_perc, fill=age_groups))+
+  geom_bar(stat="identity", width=1)+
+  theme(axis.line = element_blank())+
+  labs(fill="Age Groups",x=NULL, y= NULL,
+       title="Percentage of Shootings in Brooklyn By Age Group (from 2006-2020)")+
+  coord_polar("y", start=0)
+```
+
+## Data Model and Output
+Given that the data indicates Brooklyn had the highest number of shootings during the specified time period, I will leverage this insight alongside another aspect of the Brooklyn data to create a data model. This will be a linear regression model where the precincts in Brooklyn are treated as a function of the dates. The independent variable will be the dates, reflecting changes over time, while the dependent variable will consist of the precincts where shooting incidents occurred during that timeframe. Once both variables are established, I will utilize them along with the NYPD Shooting Incident data for Brooklyn to build the model.
+
+The model summary output indicates a relatively high residual standard error, suggesting limited accuracy. While some predicted shooting occurrences align with actual incidents in Brooklyn, there are notable discrepancies. Consequently, this model may not serve as the best fit for analyzing the input data. The primary source of error likely stems from the volume of data being used. Incorporating additional data or making further transformations could enhance the model's accuracy. Nevertheless, the initial approach and structure of the model seem sound, as it employs a regression model to predict dependent variables based on a set of independent variables—specifically, shootings in particular Brooklyn precincts over the chosen time period.
+
+```{r Data Model}
+# CREATING THE MODEL
+brooklyn_shootings <- filter(df, boroughs=='BROOKLYN')
+
+brooklyn_precincts <- brooklyn_shootings$PRECINCT
+
+brooklyn_dates <- brooklyn_shootings$OCCUR_DATE
+brooklyn_dates <- format(as.Date(brooklyn_dates, "%m/%d/%Y"), "%m/%Y")
+
+
+mod <- lm(brooklyn_precincts~brooklyn_dates, brooklyn_shootings)
+df_w_pred <- mutate(brooklyn_shootings, pred = predict(mod))
+
+summary(mod)
+
+ggplot(df_w_pred)+
+  geom_point(aes(x=brooklyn_dates, y=brooklyn_precincts,color="Actual Shootings"))+
+  geom_point(aes(x=brooklyn_dates, y=pred,color="Predicted Shootings"))+
+  scale_x_discrete(guide = guide_axis(check.overlap = TRUE))+
+  guides(color=guide_legend(title = "Brooklyn Shootings"))+
+  labs(title="Linear Regression Model (Brooklyn Precinct Shootings)",y="Brooklyn Precincts", x="Dates")
+```
+
+## Identification of Bias and Conclusion (Communication of Results and Summary)
+There are several potential biases that could impact the data and analysis, with selection bias being the most likely issue, particularly regarding the model's plotting and the choice of input data. The data model and its corresponding visualizations focus specifically on Brooklyn, one of New York's boroughs. Incorporating additional data from the broader NYPD dataset might have enhanced the model's output and provided more accurate results. Another possible bias is measurement bias, which relates to the discrepancies observed between predicted and actual occurrences shown in the model's plot.
+
+Overall, this analysis has highlighted key insights from the NYPD dataset. The findings, including the visualizations, address important questions, such as which boroughs in New York experienced the highest and lowest numbers of shootings during the specified timeframe, as well as how many of those incidents resulted in fatalities. In examining Brooklyn shootings across different age groups, I identified not only the age demographics involved but also a concerning amount of missing data for incidents without recorded age information. Gathering more comprehensive data on this aspect could prove valuable for law enforcement and other stakeholders, helping to identify contributing factors to the high shooting rates in Brooklyn and other boroughs in New York.
+
+```{r SessionInfo}
+sessionInfo()
+```

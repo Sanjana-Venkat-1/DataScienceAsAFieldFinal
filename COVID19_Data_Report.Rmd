@@ -1,0 +1,181 @@
+---
+title: "COVID19_Data_Report"
+author: "Sanjana venkat
+date: "10/13/2024"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Objective
+
+This report will analyze and present findings using the 'CSSE COVID-19 Time Series Data' from Johns Hopkins University. To begin,these R packages need to be installed:
+
+1.) tidyverse
+2.) sessioninfo
+
+After installed, the following code loads the needed libraries from the required packages that will be used for this analysis.
+```{r packages}
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+## Importing Data (Reproducibility)
+The required CSV datasets must be imported, and they can be found at the following site: <https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data/csse_covid_19_time_series>. Once there, proceed with the following steps:
+
+1.) The GitHub repository from the source mentioned above includes the four COVID-19 datasets required for the analysis. To access the data, first, assign the following source to a variable, which will act as the base link for all four datasets: <https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/>.
+
+2.) Append the name of each dataset to the base link and use it to read the data. The code below performs this operation, reading the data in CSV format:
+
+```{r Importing COVID19 Data}
+covid_data_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+files <- c("time_series_covid19_confirmed_US.csv",
+          "time_series_covid19_confirmed_global.csv",
+          "time_series_covid19_deaths_US.csv",
+          "time_series_covid19_deaths_global.csv")
+
+covid19_data <- str_c(covid_data_url, files)
+US_cases <- read_csv(covid19_data[1])
+global_cases <- read_csv(covid19_data[2])
+US_deaths <- read_csv(covid19_data[3])
+global_deaths <- read_csv(covid19_data[4])
+```
+## Tidying and Transforming the Data
+Once the necessary COVID-19 data is loaded, the next step is to tidy and transform it for analysis, resulting in four key datasets: US_cases, US_deaths, global_cases, and global_deaths. For the global data, I focused on COVID-19 cases specifically in Germany and Italy.
+
+The analysis will center around two main questions: 
+
+1.) "How did the number of COVID-19 cases in Germany and Italy evolve over time?"
+"Which country, Germany or Italy, experienced a higher number of COVID-19-related deaths?"
+
+Visualizations and a data model will be used to answer these questions.
+
+```{r Tidy and Transform the COVID19 Data}
+US_cases <- US_cases %>%
+  pivot_longer(cols = -(UID:Combined_Key),
+               names_to = "date",
+               values_to = "cases") %>%
+  select(Admin2:cases) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat,Long_))
+
+US_deaths <- US_deaths %>%
+  pivot_longer(cols = -(UID:Combined_Key),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat,Long_))
+
+global_cases <- global_cases %>%
+  pivot_longer(cols = -c('Province/State',
+                         'Country/Region', Lat, Long),
+               names_to = "date",
+               values_to = "cases") %>%
+  select(-c(Lat,Long))
+
+global_deaths <- global_deaths %>%
+  pivot_longer(cols = -c('Province/State',
+                         'Country/Region', Lat, Long),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(-c(Lat,Long))
+
+global_cov19_data <- global_cases %>%
+  full_join(global_deaths) %>%
+  rename(Country_Region = `Country/Region`,
+         Province_State = `Province/State`) %>%
+  mutate(date = mdy(date))
+
+global_country_region <- global_cov19_data$Country_Region
+global_dates <- global_cov19_data$date
+specified_global_cases <- global_cov19_data$cases
+specified_global_deaths <- global_cov19_data$deaths
+
+global_vis1_data <- data.frame(global_country_region, global_dates, specified_global_cases, specified_global_deaths)
+
+```
+## Data Visualization 01 : Number of COVID19 Cases Between Germany and Italy 
+
+This line graph compares the number of COVID-19 cases in Germany and Italy over time, with each country represented by a separate line. The visualization shows the progression of cases, revealing that Germany consistently had a higher number of cases throughout the time period.
+
+```{r Data Visualization 01}
+italy_covid_data <- global_vis1_data %>%
+  filter(global_country_region=='Italy')
+
+germany_covid_data <- global_vis1_data %>%
+  filter(global_country_region=='Germany')
+
+ggplot()+
+  geom_line(germany_covid_data, mapping=aes(global_dates, specified_global_cases,
+                                            color="red"))+
+  geom_line(italy_covid_data, mapping=aes(global_dates, specified_global_cases,
+                                          color="blue"))+
+  scale_color_discrete(name = "Countries", labels = c("Germany", "Italy"))+
+  labs(title='COVID19 Cases between Germany and Italy (January 2020 - Present)',
+       x='Dates',
+       y='Number of COVID19 Cases')
+
+```
+
+## Data Visualization 02: COVID19 Deaths Between Germany and Italy 
+
+The second visualization presents a bar graph showing the total number of COVID-19-related deaths in Germany and Italy as of today. Interestingly, although Germany had more COVID-19 cases over time, Italy reports a higher number of deaths.
+
+To explore why Italy's death toll is higher despite having fewer cases, additional data would be essential. This could include information on government policies (such as lockdown measures or social distancing guidelines), hospital capacity and the availability of medical resources, and vaccine distribution during the pandemic. Examining the age distribution of deaths could also offer insights, as certain age groups may have been more vulnerable in Italy. Other useful data might involve the quality of healthcare systems, differences in public health responses, or socioeconomic factors that impacted how each country managed the crisis.
+
+By analyzing these factors, we could better understand the reasons behind Italy's higher number of COVID-19 deaths compared to Germany.
+
+```{r Data Visualization 02}
+
+selected_global_covid_data <- global_vis1_data %>%
+  filter(global_country_region==c("Germany", "Italy"))
+
+ggplot(selected_global_covid_data, mapping=aes(global_country_region, specified_global_deaths,fill=global_country_region))+
+  geom_bar(stat = 'identity', position = 'dodge')+
+  scale_fill_discrete(name = "Countries", labels = c("Germany (99,437 Deaths)", "Italy (133,247 Deaths)"))+
+  labs(title="COVID19 Deaths Between Germany and Italy", x="Countries", y="Number Of COVID19 Deaths")
+
+```
+
+## Linear Regression Data Model
+Using insights and results from the visualizations, I developed a linear regression model to analyze COVID-19 trends in Germany and Italy. In this model, the number of COVID-19 cases in both countries is modeled as a function of time, with dates serving as the independent variable and case counts as the dependent variable. The goal is to track how the number of cases changes over time for each country, using global COVID-19 data to construct the model.
+
+The model's results show that initially, the predicted case numbers for 2020 did not align well with the actual cases for both Germany and Italy. However, starting around July 2021, the model's predictions became more accurate, with the predicted values closely matching the actual case numbers for both countries. This improvement suggests that the model's performance became more reliable in the second half of the pandemic.
+
+Despite the progress, the model still exhibits a high residual standard error, indicating a lack of precision in the early phases, especially for the year 2020. This error points to the model's limited accuracy in predicting the case trends, particularly in the initial outbreak period when COVID-19 dynamics were more volatile.
+
+```{r Data Model}
+
+mod <- lm(selected_global_covid_data$specified_global_cases~selected_global_covid_data$global_dates, selected_global_covid_data)
+df_w_pred <- mutate(selected_global_covid_data, pred = predict(mod))
+
+summary(mod)
+
+ggplot(df_w_pred)+
+  geom_point(aes(x=global_dates, y=specified_global_cases, color="Actual COVID19 Cases (Germany and Italy)"))+
+  geom_point(aes(x=global_dates, y=pred, color="Predicted COVID19 Cases"))+
+  guides(color=guide_legend(title = "COVID19 Cases (Germany and Italy"))+
+  labs(title="Linear Regression Model (COVID19 Cases for Germany and Italy)", y="Number of Cases (Germany and Italy)", x="Dates")
+```
+
+## Identification of Bias and Conclusion (Communication of Results and Summary)
+In this analysis, there is potential for several biases to affect the data and conclusions, with selection bias being one of the most likely. The data model and associated plot are based exclusively on COVID-19 data from Germany and Italy over the given timeframe. This focus on just two countries means the results might not be generalizable to other regions. If the analysis had included data from additional countries—such as France, Spain, or others—the findings could have been different, potentially offering a broader view of the pandemic's impact across Europe.
+
+Another possible source of bias is confirmation bias in the dataset itself. There is the potential for inaccuracies in COVID-19 diagnoses, particularly during the early stages of the pandemic when the virus's symptoms were sometimes mistaken for those of other illnesses like the flu. For example, some cases recorded as COVID-19 could have been misdiagnosed cases of the flu, given their overlapping symptoms. Additionally, delays in reporting COVID-19 cases could have skewed the data. If a case occurred in May but wasn’t confirmed or recorded until June, this would introduce errors in the timeline, potentially leading to incorrect analysis of trends.
+
+Despite these biases, the analysis has successfully uncovered key insights from the COVID-19 dataset. The visualizations and data model have provided answers to critical questions, such as:
+How did COVID-19 case numbers in Germany and Italy evolve between 2020 and 2024?
+Which country, Germany or Italy, experienced a higher number of recorded COVID-19-related deaths?
+
+However, to fully understand the reasons behind Italy's higher death toll, additional data is needed. Factors such as healthcare capacity, the effectiveness of public health interventions, age demographics, and the timing of vaccinations could offer more clarity. Understanding these factors would also help in identifying preventative measures to reduce COVID-19 deaths in the future. Further data on hospital resources, socio-economic factors, and policy responses would be essential for a deeper and more accurate analysis, which could potentially lead to better strategies for managing future health crises.
+
+```{r SessionInfo}
+sessionInfo()
+```
